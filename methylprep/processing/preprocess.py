@@ -7,19 +7,18 @@ import logging
 import numpy as np
 import pandas as pd
 from statsmodels import robust
-from scipy.stats import norm, lognorm
+from scipy.stats import norm
 # App
 from ..models import ControlType, ArrayType
-from ..models.sketchy_probes import qualityMask450, qualityMaskEPIC, qualityMaskEPICPLUS, qualityMaskmouse
-
+from ..models.sketchy_probes import qualityMask
 
 __all__ = ['preprocess_noob']
-
 
 LOGGER = logging.getLogger(__name__)
 
 
-def preprocess_noob(container, offset=15, pval_probes_df=None, quality_mask_df=None, nonlinear_dye_correction=True, debug=False, unit_test_oob=False): # v1.4.5+
+def preprocess_noob(container, offset=15, pval_probes_df=None, quality_mask_df=None, nonlinear_dye_correction=True,
+                    debug=False, unit_test_oob=False):  # v1.4.5+
     """ NOOB pythonized copy of https://github.com/zwdzwd/sesame/blob/master/R/background_correction.R
     - The function takes a SigSet and returns a modified SigSet with the background subtracted.
     - Background is modelled in a normal distribution and true signal in an exponential distribution.
@@ -32,41 +31,48 @@ def preprocess_noob(container, offset=15, pval_probes_df=None, quality_mask_df=N
     if nonlinear_dye_correction=True, this uses a sesame method in place of minfi method, in a later step.
     if unit_test_oob==True, returns the intermediate data instead of updating the SigSet/SampleDataContainer.
     """
+    is_probes_df = isinstance(pval_probes_df, pd.DataFrame)
+    is_mask_df = isinstance(quality_mask_df, pd.DataFrame)
+
     if debug:
-        print(f"DEBUG NOOB {debug} nonlinear_dye_correction={nonlinear_dye_correction}, pval_probes_df={pval_probes_df.shape if isinstance(pval_probes_df,pd.DataFrame) else 'None'}, quality_mask_df={quality_mask_df.shape if isinstance(quality_mask_df,pd.DataFrame) else 'None'}")
-    # stack- need one long list of values, regardless of Meth/Uneth
+        print(f"DEBUG NOOB {debug} "
+              f"nonlinear_dye_correction={nonlinear_dye_correction}, "
+              f"pval_probes_df={pval_probes_df.shape if is_probes_df else 'None'}, q"
+              f"uality_mask_df={quality_mask_df.shape if isinstance(quality_mask_df, pd.DataFrame) else 'None'}")
+
+    # stack- need one long list of values, regardless of Meth/UnMeth
     ibG = pd.concat([
         container.ibG.reset_index().rename(columns={'Meth': 'mean_value'}).assign(used='M'),
         container.ibG.reset_index().rename(columns={'Unmeth': 'mean_value'}).assign(used='U')
     ])
-    ibG = ibG[ ~ibG['mean_value'].isna() ].drop(columns=['Meth','Unmeth'])
+    ibG = ibG[~ibG['mean_value'].isna()].drop(columns=['Meth', 'Unmeth'])
 
     ibR = pd.concat([
-        container.ibR.reset_index().rename(columns={'Meth': 'mean_value'}).assign(used='M'), #.drop(columns=['Meth','Unmeth']),
-        container.ibR.reset_index().rename(columns={'Unmeth': 'mean_value'}).assign(used='U') #.drop(columns=['Meth','Unmeth'])
+        container.ibR.reset_index().rename(columns={'Meth': 'mean_value'}).assign(used='M'),
+        container.ibR.reset_index().rename(columns={'Unmeth': 'mean_value'}).assign(used='U')
     ])
-    ibR = ibR[ ~ibR['mean_value'].isna() ].drop(columns=['Meth','Unmeth'])
+    ibR = ibR[~ibR['mean_value'].isna()].drop(columns=['Meth', 'Unmeth'])
 
     # out-of-band is Green-Unmeth and Red-Meth
     # exclude failing probes
-    pval = pval_probes_df.loc[ pval_probes_df['poobah_pval'] > container.poobah_sig ].index if isinstance(pval_probes_df, pd.DataFrame) else []
-    qmask = quality_mask_df.loc[ quality_mask_df['quality_mask'] == 0 ].index if isinstance(quality_mask_df, pd.DataFrame) else []
+    pval = pval_probes_df.loc[pval_probes_df['poobah_pval'] > container.poobah_sig].index if is_probes_df else []
+    qmask = quality_mask_df.loc[quality_mask_df['quality_mask'] == 0].index if is_mask_df else []
     # the ignored errors here should only be from probes that are both pval failures and qmask failures.
     Rmeth = list(container.oobR['Meth'].drop(index=pval, errors='ignore').drop(index=qmask, errors='ignore'))
     Runmeth = list(container.oobR['Unmeth'].drop(index=pval, errors='ignore').drop(index=qmask, errors='ignore'))
-    oobR = pd.DataFrame( Rmeth + Runmeth, columns=['mean_value'])
+    oobR = pd.DataFrame(Rmeth + Runmeth, columns=['mean_value'])
     Gmeth = list(container.oobG['Meth'].drop(index=pval, errors='ignore').drop(index=qmask, errors='ignore'))
     Gunmeth = list(container.oobG['Unmeth'].drop(index=pval, errors='ignore').drop(index=qmask, errors='ignore'))
-    oobG = pd.DataFrame( Gmeth + Gunmeth, columns=['mean_value'])
+    oobG = pd.DataFrame(Gmeth + Gunmeth, columns=['mean_value'])
     # minfi test
     # ref fg_green = 442614 | vs ibG 442672 = 396374 + 46240
     # ref fg_red = 528410 | vs ibR 528482 = 439279 + 89131
     # ref oob_green = 178374
     # ref oob_red = 92578
-    #oobR = pd.DataFrame( data={'mean_value': container.oobR['Meth']})
-    #oobG = pd.DataFrame( data={'mean_value': container.oobG['Unmeth']})
-    #print(f" oobR {oobR.shape} oobG {oobG.shape}")
-    #import pdb;pdb.set_trace()
+    # oobR = pd.DataFrame( data={'mean_value': container.oobR['Meth']})
+    # oobG = pd.DataFrame( data={'mean_value': container.oobG['Unmeth']})
+    # print(f" oobR {oobR.shape} oobG {oobG.shape}")
+    # import pdb;pdb.set_trace()
 
     debug_warnings = ""
     if oobR['mean_value'].isna().sum() > 0:
@@ -82,25 +88,29 @@ def preprocess_noob(container, offset=15, pval_probes_df=None, quality_mask_df=N
         print(f"ibG {len(ibG)} ibR {len(ibR)} oobG {len(oobG)} oobR {len(oobR)} | {debug_warnings}")
 
     # set minimum intensity to 1
-    ibG_affected = len(ibG.loc[ ibG['mean_value'] < 1 ].index)
-    ibR_affected = len(ibR.loc[ ibR['mean_value'] < 1 ].index)
-    ibG.loc[ ibG['mean_value'] < 1, 'mean_value'] = 1
-    ibR.loc[ ibR['mean_value'] < 1, 'mean_value'] = 1
-    oobG_affected = len(oobG[ oobG['mean_value'] < 1])
-    oobR_affected = len(oobR[ oobR['mean_value'] < 1])
-    oobG.loc[ oobG.mean_value < 1, 'mean_value'] = 1
-    oobR.loc[ oobR.mean_value < 1, 'mean_value'] = 1
+    ibG_affected = len(ibG.loc[ibG['mean_value'] < 1].index)
+    ibR_affected = len(ibR.loc[ibR['mean_value'] < 1].index)
+    ibG.loc[ibG['mean_value'] < 1, 'mean_value'] = 1
+    ibR.loc[ibR['mean_value'] < 1, 'mean_value'] = 1
+    oobG_affected = len(oobG[oobG['mean_value'] < 1])
+    oobR_affected = len(oobR[oobR['mean_value'] < 1])
+    oobG.loc[oobG.mean_value < 1, 'mean_value'] = 1
+    oobR.loc[oobR.mean_value < 1, 'mean_value'] = 1
     if debug:
         if ibR_affected > 0 or ibR_affected > 0:
-            print(f"ib: Set {ibR_affected} red and {ibG_affected} green to 1.0 ({len(ibR[ ibR['mean_value'] == 1 ].index)}, {len(ibG[ ibG['mean_value'] == 1 ].index)})")
+            print(
+                f"ib: Set {ibR_affected} red and {ibG_affected} green to 1.0 "
+                f"({len(ibR[ibR['mean_value'] == 1].index)}, {len(ibG[ibG['mean_value'] == 1].index)})")
         if oobG_affected > 0 or oobR_affected > 0:
-            print(f"oob: Set {oobR_affected} red and {oobG_affected} green to 1.0 ({len(oobR[ oobR['mean_value'] == 1 ].index)}, {len(oobG[ oobG['mean_value'] == 1 ].index)})")
+            print(
+                f"oob: Set {oobR_affected} red and {oobG_affected} green to 1.0 "
+                f"({len(oobR[oobR['mean_value'] == 1].index)}, {len(oobG[oobG['mean_value'] == 1].index)})")
 
     # do background correction in each channel; returns "normalized in-band signal"
     ibG_nl, params_green = normexp_bg_corrected(ibG, oobG, offset, sample_name=container.sample.name)
-    ibR_nl, params_red   = normexp_bg_corrected(ibR, oobR, offset, sample_name=container.sample.name)
-    noob_green = ibG_nl.round({'bg_corrected':0})
-    noob_red = ibR_nl.round({'bg_corrected':0})
+    ibR_nl, params_red = normexp_bg_corrected(ibR, oobR, offset, sample_name=container.sample.name)
+    noob_green = ibG_nl.round({'bg_corrected': 0})
+    noob_red = ibR_nl.round({'bg_corrected': 0})
 
     if unit_test_oob:
         return {
@@ -111,11 +121,12 @@ def preprocess_noob(container, offset=15, pval_probes_df=None, quality_mask_df=N
         }
 
     # by default, this last step is omitted for sesame
-    if nonlinear_dye_correction == True:
+    if nonlinear_dye_correction:
         # update() expects noob_red/green to have IlmnIDs in index, and contain bg_corrected for ALL probes.
         container.update_probe_means(noob_green, noob_red)
-    elif nonlinear_dye_correction == False:
-        # this "linear" method may be anologous to the ratio quantile normalization described in Nature: https://www.nature.com/articles/s41598-020-72664-6
+    elif not nonlinear_dye_correction:
+        # this "linear" method may be analogous to the ratio quantile normalization described in Nature:
+        # https://www.nature.com/articles/s41598-020-72664-6
         normexp_bg_correct_control(container.ctrl_green, params_green)
         normexp_bg_correct_control(container.ctrl_red, params_red)
         mask_green = container.ctrl_green['Control_Type'].isin(ControlType.normalization_green())
@@ -129,11 +140,12 @@ def preprocess_noob(container, offset=15, pval_probes_df=None, quality_mask_df=N
     elif nonlinear_dye_correction is None:
         if debug:
             LOGGER.info("skipping linear/nonlinear dye-bias correction step")
-        # skips the minfi-linear step and won't trigger the sesame nonlinear dye bias step downstream, if you REALLY want it uncorrected. Mostly for debugging / benchmarking.
+        # skips the minfi-linear step and won't trigger the sesame nonlinear dye bias step downstream,
+        # if you REALLY want it uncorrected. Mostly for debugging / benchmarking.
         container.update_probe_means(noob_green, noob_red)
 
 
-class BackgroundCorrectionParams():
+class BackgroundCorrectionParams:
     """ used in apply_bg_correction """
     __slots__ = (
         'bg_mean',
@@ -143,7 +155,8 @@ class BackgroundCorrectionParams():
     )
 
     def __init__(self, bg_mean, bg_mad, mean_signal, offset):
-        # note: default offset was 15. In v1.3.3 (Jan 2020) I kept 15, after finding this made results match sesame's NOOB output exactly, if dye step ommitted.
+        # note: default offset was 15. In v1.3.3 (Jan 2020) I kept 15, after finding this made results match sesame's
+        # NOOB output exactly, if dye step ommitted.
         # offset is specified in the preprocess_noob() function.
         self.bg_mean = bg_mean
         self.bg_mad = bg_mad
@@ -161,7 +174,7 @@ def normexp_bg_corrected(fg_probes, ctrl_probes, offset, sample_name=None):
         return fg_probes, params
     fg_mean, _fg_mad = huber(fg_means)
     bg_mean, bg_mad = huber(ctrl_probes['mean_value'])
-    mean_signal = np.maximum(fg_mean - bg_mean, 10) # "alpha" in sesame function
+    mean_signal = np.maximum(fg_mean - bg_mean, 10)  # "alpha" in sesame function
 
     params = BackgroundCorrectionParams(bg_mean, bg_mad, mean_signal, offset)
 
@@ -184,11 +197,11 @@ def apply_bg_correction(mean_values, params):
     if not isinstance(params, BackgroundCorrectionParams):
         raise ValueError('params is not a BackgroundCorrectionParams instance')
 
-    np.seterr(under='ignore') # 'raise to explore fixing underflow warning here'
+    np.seterr(under='ignore')  # 'raise to explore fixing underflow warning here'
 
-    bg_mean = params.bg_mean #mu
-    bg_mad = params.bg_mad #sigma
-    mean_signal = params.mean_signal #alpha
+    bg_mean = params.bg_mean  # mu
+    bg_mad = params.bg_mad  # sigma
+    mean_signal = params.mean_signal  # alpha
     offset = params.offset
 
     mu_sf = mean_values - bg_mean - (bg_mad ** 2) / mean_signal
@@ -237,7 +250,7 @@ def huber(vector):
     convergence_tol = 1.0e-6
     mad_scale = robust.mad(vector)
     local_median = np.median(vector)
-    init_local_median = local_median
+    # init_local_median = local_median
 
     if not (local_median or mad_scale):
         return local_median, mad_scale
@@ -269,33 +282,35 @@ def _apply_sesame_quality_mask(data_container):
         to use TCGA masking, only applies to HM450
 
     """
-    if data_container.array_type not in (
-        # ArrayType.ILLUMINA_27K,
-        ArrayType.ILLUMINA_450K,
-        ArrayType.ILLUMINA_EPIC,
-        ArrayType.ILLUMINA_EPIC_PLUS,
-        ArrayType.ILLUMINA_MOUSE):
-        LOGGER.info(f"Quality masking is not supported for {data_container.array_type}.")
-        return
+
     # load set of probes to remove from local file
     if data_container.array_type == ArrayType.ILLUMINA_450K:
-        probes = qualityMask450
+        probes = qualityMask['450']['data']
     elif data_container.array_type == ArrayType.ILLUMINA_EPIC:
-        probes = qualityMaskEPIC
+        probes = qualityMask['EPIC']['data']
     elif data_container.array_type == ArrayType.ILLUMINA_EPIC_PLUS:
-        # this is a bit of a hack; probe names don't match epic, so I'm temporarily renaming, then filtering, then reverting.
-        probes = qualityMaskEPICPLUS
+        probes = qualityMask['EPIC_plus']['data']
     elif data_container.array_type == ArrayType.ILLUMINA_MOUSE:
-        probes = qualityMaskmouse
+        probes = qualityMask['Mouse']['data']
+    elif data_container.array_type == ArrayType.ILLUMINA_EPIC_V2:
+        probes = qualityMask['EPIC_v2']['data']
+    else:
+        LOGGER.info(f"Quality masking is not supported for {data_container.array_type}.")
+        return
 
     # v1.6+: the 1.0s are good probes and the 0.0 are probes to be excluded.
-    cgs = pd.DataFrame( np.zeros((len(data_container.man.index), 1)), index=data_container.man.index, columns=['quality_mask'])
+    cgs = pd.DataFrame(np.zeros((len(data_container.man.index), 1)),
+                       index=data_container.man.index, columns=['quality_mask'])
     cgs['quality_mask'] = 1.0
-    snps = pd.DataFrame( np.zeros((len(data_container.snp_man.index), 1)), index=data_container.snp_man.index, columns=['quality_mask'])
+
+    snps = pd.DataFrame(np.zeros((len(data_container.snp_man.index), 1)),
+                        index=data_container.snp_man.index, columns=['quality_mask'])
     snps['quality_mask'] = 1.0
+
     df = pd.concat([cgs, snps])
     df.loc[df.index.isin(probes), 'quality_mask'] = 0
-    #LOGGER.info(f"DEBUG quality_mask: {df.shape}, {df['quality_mask'].value_counts()} from {probes.shape} probes")
+
+    # LOGGER.info(f"DEBUG quality_mask: {df.shape}, {df['quality_mask'].value_counts()} from {probes.shape} probes")
     return df
 
 

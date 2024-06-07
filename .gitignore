@@ -107,6 +107,7 @@ methylprep/.DS_Store
 
 # Local Artifacts
 .DS_Store
+.idea
 
 docs/example_data/GSE69852/*.pkl
 docs/example_data/epic_plus/*.pkl

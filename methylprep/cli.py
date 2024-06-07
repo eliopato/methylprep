@@ -14,9 +14,10 @@ from .download import (
     build_composite_dataset,
     search,
     pipeline_find_betas_any_source
-    )
+)
 
 LOGGER = logging.getLogger(__name__)
+
 
 class DefaultParser(argparse.ArgumentParser):
     def error(self, message):
@@ -50,25 +51,32 @@ def build_parser():
     subparsers = parser.add_subparsers(dest='command', required=True)
     #subparsers.required = True # this is a python3.4-3.7 bug; cannot specify in the call above.
 
-    process_parser = subparsers.add_parser('process', help='Finds idat files and calculates raw, beta, m_values for a batch of samples.')
+    process_parser = subparsers.add_parser('process',
+                                           help='Finds idat files and calculates raw, beta, m_values for a batch of samples.')
     process_parser.set_defaults(func=cli_process)
 
-    beta_bake_parser = subparsers.add_parser('beta_bake', help='All encompasing pipeline that will find GEO datasets in any form, download, and convert into a pickled dataframe of beta-values. Just specify the GEO_ID.')
+    beta_bake_parser = subparsers.add_parser('beta_bake',
+                                             help='All encompasing pipeline that will find GEO datasets in any form, download, and convert into a pickled dataframe of beta-values. Just specify the GEO_ID.')
     beta_bake_parser.set_defaults(func=cli_beta_bakery)
 
-    download_parser = subparsers.add_parser('download', help='Downloads the specified series from GEO or ArrayExpress, if IDATs are available.')
+    download_parser = subparsers.add_parser('download',
+                                            help='Downloads the specified series from GEO or ArrayExpress, if IDATs are available.')
     download_parser.set_defaults(func=cli_download)
 
-    meta_parser = subparsers.add_parser('meta_data', help='Creates a meta_data dataframe from GEO MINiML XML file. Specify the GEO id.')
+    meta_parser = subparsers.add_parser('meta_data',
+                                        help='Creates a meta_data dataframe from GEO MINiML XML file. Specify the GEO id.')
     meta_parser.set_defaults(func=cli_meta_data)
 
-    composite_parser = subparsers.add_parser('composite', help='Create a single dataset from a group of public GEO or ArrayExpress datasets, and apply filters to sample meta data at same time.')
+    composite_parser = subparsers.add_parser('composite',
+                                             help='Create a single dataset from a group of public GEO or ArrayExpress datasets, and apply filters to sample meta data at same time.')
     composite_parser.set_defaults(func=cli_composite)
 
-    sample_sheet_parser = subparsers.add_parser('sample_sheet', help='Finds and validates a SampleSheet for a given directory of idat files.')
+    sample_sheet_parser = subparsers.add_parser('sample_sheet',
+                                                help='Finds and validates a SampleSheet for a given directory of idat files.')
     sample_sheet_parser.set_defaults(func=cli_sample_sheet)
 
-    alert_parser = subparsers.add_parser('alert', help='Command line or Cron function to search GEO for datasets, updating only if new data found.')
+    alert_parser = subparsers.add_parser('alert',
+                                         help='Command line or Cron function to search GEO for datasets, updating only if new data found.')
     alert_parser.set_defaults(func=cli_alert)
 
     parsed_args, func_args = parser.parse_known_args(sys.argv[1:])
@@ -121,15 +129,15 @@ def cli_process(cmd_args):
     parser.add_argument(
         '--no_sample_sheet',
         required=False,
-        action='store_true', # if -e passed, this suppresses data export (if running as part of pipeline or something)
-        default=False, # if False, CLI returns nothing.
+        action='store_true',  # if -e passed, this suppresses data export (if running as part of pipeline or something)
+        default=False,  # if False, CLI returns nothing.
         help='If your dataset lacks a sample sheet csv file, specify --no_sample_sheet to have it create one on the fly. This will read .idat file names and ensure processing works. If there is a matrix file, it will add in sample names too. If you need to add more meta data into the sample_sheet, look at the create sample_sheet CLI option.',
     )
 
     parser.add_argument(
         '-n', '--sample_name',
         required=False,
-        nargs='+', # -- this flag support making a list of each -n
+        nargs='+',  # -- this flag support making a list of each -n
         help='Sample(s) to process. You can pass multiple sample names like this: `python -m methylprep process -d . --all --no_sample_sheet -n Sample_1 Sample_2 Sample_3`',
     )
 
@@ -167,23 +175,23 @@ def cli_process(cmd_args):
     parser.add_argument(
         '-e', '--no_export',
         required=False,
-        action='store_false', # if -e passed, this suppresses data export
-        default=True, # if False, CLI returns nothing. will set export=True
+        action='store_false',  # if -e passed, this suppresses data export
+        default=True,  # if False, CLI returns nothing. will set export=True
         help='Default is to export data to csv in same folder where IDAT file resides. Pass in --no_export to suppress this.',
     )
 
     parser.add_argument(
         '-x', '--no_meta_export',
         required=False,
-        action='store_false', # if -x passed, this suppresses meta data export
-        default=True, # will set meta_data_frame == True
+        action='store_false',  # if -x passed, this suppresses meta data export
+        default=True,  # will set meta_data_frame == True
         help='Default is to convert the sample sheet into a pickled DataFrame, recognized in methylcheck and methylize. Pass in --no_meta_export to suppress this.',
     )
 
     parser.add_argument(
-        '-i','--bit',
+        '-i', '--bit',
         required=False,
-        choices=['float64','float32','float16'],
+        choices=['float64', 'float32', 'float16'],
         default='float32',
         help="Change the processed beta or m_value data_type output from float64 to float16 or float32, to save disk space.",
     )
@@ -251,7 +259,6 @@ def cli_process(cmd_args):
         help='If specified, saves everything: (beta_values.pkl, m_value.pkl, control_probes.pkl, CSVs for each sample, including uncorrected raw values, and meta data, and poobah_values.pkl). And removes failed probes using sesame pOOBah method from these files. This overrides individual CLI settings.'
     )
 
-
     args = parser.parse_args(cmd_args)
     array_type = args.array_type
     manifest_filepath = args.manifest
@@ -260,7 +267,7 @@ def cli_process(cmd_args):
         print("Enabling --poobah corrections, because user specified --export_poobah.")
         args.poobah = True
 
-    if args.all == True:
+    if args.all:
         args.betas = True
         args.m_value = True
         args.uncorrected = True
@@ -284,14 +291,14 @@ def cli_process(cmd_args):
         m_value=args.m_value,
         batch_size=args.batch_size,
         save_uncorrected=args.uncorrected,
-        export=args.no_export, # flag flips here
-        meta_data_frame=args.no_meta_export, # flag flips here
+        export=args.no_export,  # flag flips here
+        meta_data_frame=args.no_meta_export,  # flag flips here
         bit=args.bit,
         save_control=args.save_control,
         poobah=args.poobah,
         export_poobah=args.export_poobah,
         quality_mask=(not args.no_quality_mask),
-        sesame=(not args.minfi), # default 'sesame' method can be turned off using --minfi,
+        sesame=(not args.minfi),  # default 'sesame' method can be turned off using --minfi,
         pneg_ecdf=args.pneg_ecdf,
         file_format=args.file_format
     )
@@ -370,13 +377,13 @@ def cli_beta_bakery(cmd_args):
 
     args = parser.parse_args(cmd_args)
     args.project_name = args.id
-    args.move = True # moves all files out of temp-working-folder if called via CLI
-    delattr(args,'id')
-    if args.no_clean == True:
+    args.move = True  # moves all files out of temp-working-folder if called via CLI
+    delattr(args, 'id')
+    if args.no_clean:
         args.clean = False
     else:
         args.clean = True
-    delattr(args,'no_clean')
+    delattr(args, 'no_clean')
     pipeline_find_betas_any_source(**vars(args))
 
 
@@ -404,7 +411,7 @@ def cli_download(cmd_args):
         required=False,
         type=Path,
         help='Filename of a text file containing a list of series IDs. IDs can be either GEO or ArrayExpress. One ID on each line',
-        )
+    )
 
     parser.add_argument(
         '-o', '--dict_only',
@@ -412,7 +419,7 @@ def cli_download(cmd_args):
         action='store_true',
         default=False,
         help="Download IDAT files and meta data but don't process them further with run_pipeline.",
-        )
+    )
 
     parser.add_argument(
         '-b', '--batch_size',
@@ -424,7 +431,7 @@ def cli_download(cmd_args):
     parser.add_argument(
         '-n', '--no_clean',
         required=False,
-        action="store_true", #if omitted, this will auto-set to false
+        action="store_true",  # if omitted, this will auto-set to false
         help='Leave processing and raw data files in folders. By default, these files are removed during processing.'
     )
 
@@ -437,29 +444,29 @@ def cli_download(cmd_args):
     )
 
     args = parser.parse_args(cmd_args)
-    if args.no_clean == True:
+    if args.no_clean:
         args.clean = False
     else:
         args.clean = True
 
-    if args.id == None and args.list == None:
+    if args.id is None and args.list is None:
         print("Missing parameter: either --id or --list are required")
         return
 
     if args.id:
         if args.batch_size:
             run_series(args.id, args.data_dir, dict_only=args.dict_only, batch_size=args.batch_size,
-                clean=args.clean, decompress=args.no_decompress)
+                       clean=args.clean, decompress=args.no_decompress)
         else:
             run_series(args.id, args.data_dir, dict_only=args.dict_only,
-                clean=args.clean, decompress=args.no_decompress)
+                       clean=args.clean, decompress=args.no_decompress)
     elif args.list:
         if args.batch_size:
             run_series_list(args.list, args.data_dir, dict_only=args.dict_only, batch_size=args.batch_size,
-            clean=args.clean, decompress=args.no_decompress)
+                            clean=args.clean, decompress=args.no_decompress)
         else:
             run_series_list(args.list, args.data_dir, dict_only=args.dict_only,
-            clean=args.clean, decompress=args.no_decompress)
+                            clean=args.clean, decompress=args.no_decompress)
 
 
 def cli_meta_data(cmd_args):
@@ -508,7 +515,7 @@ based on the associated meta data."""
     parser.add_argument(
         '-o', '--dont_download',
         required=False,
-        default=True, # passed in download=True below, unless user overrides with --dont_download
+        default=True,  # passed in download=True below, unless user overrides with --dont_download
         action="store_false",
         help='By default, this will first look at the local filepath (--data-dir) for `GSE..._family.xml` files. IF this is specified, it wont later look online to download the file. Sometimes a series has multiple files and it is easier to download, extract, and point this parser to each file instead.',
     )
@@ -529,7 +536,7 @@ def cli_composite(cmd_args):
     parser = DefaultParser(
         prog='methylprep composite',
         description="A tool to build a data set from a list of public datasets."
-        )
+    )
 
     parser.add_argument(
         '-l', '--list',
@@ -588,7 +595,7 @@ def cli_composite(cmd_args):
         betas=args.betas,
         m_value=args.m_value,
         export=args.export,
-        ) # for composites, you always want to remove unused idats.
+    )  # for composites, you always want to remove unused idats.
 
 
 def cli_sample_sheet(cmd_args):
@@ -641,15 +648,16 @@ def cli_sample_sheet(cmd_args):
 
     parsed_args = parser.parse_args(cmd_args)
 
-    if parsed_args.create == True:
+    if parsed_args.create:
         from methylprep.files import create_sample_sheet
         create_sample_sheet(parsed_args.data_dir, matrix_file=False, output_file=parsed_args.output_file,
-            sample_type=parsed_args.sample_type,
-            sample_sub_type=parsed_args.sample_sub_type,
-            )
+                            sample_type=parsed_args.sample_type,
+                            sample_sub_type=parsed_args.sample_sub_type,
+                            )
     sample_sheet = get_sample_sheet(parsed_args.data_dir)
     for sample in sample_sheet.get_samples():
         sys.stdout.write(f'{sample}\n')
+
 
 def cli_alert(cmd_args):
     parser = DefaultParser(
@@ -673,6 +681,7 @@ def cli_alert(cmd_args):
     )
     args = parser.parse_args(cmd_args)
     search(args.keyword)
+
 
 def cli_app():
     build_parser()

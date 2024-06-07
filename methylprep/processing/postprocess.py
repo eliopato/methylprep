@@ -7,14 +7,13 @@ from pathlib import Path
 import logging
 # app
 from ..utils import is_file_like
-#from ..utils.progress_bar import * # context tqdm
 
-os.environ['NUMEXPR_MAX_THREADS'] = "8" # suppresses warning
-
+os.environ['NUMEXPR_MAX_THREADS'] = "8"  # suppresses warning
 
 __all__ = ['calculate_beta_value', 'calculate_m_value', 'consolidate_values_for_sheet', 'consolidate_mouse_probes']
 
 LOGGER = logging.getLogger(__name__)
+
 
 def calculate_beta_value(methylated_noob, unmethylated_noob, offset=100):
     """ the ratio of (methylated_intensity / total_intensity)
@@ -30,7 +29,8 @@ def calculate_beta_value(methylated_noob, unmethylated_noob, offset=100):
 
 
 def calculate_m_value(methylated_noob, unmethylated_noob, offset=0):
-    """ the log(base 2) (1+meth / 1+unmeth) intensities (with a min clip intensity of 1 to avoid divide-by-zero-errors, like sesame)"""
+    """ the log(base 2) (1+meth / 1+unmeth) intensities
+    (with a min clip intensity of 1 to avoid divide-by-zero-errors, like sesame)"""
     methylated = np.clip(methylated_noob, 1, None) + offset
     unmethylated = np.clip(unmethylated_noob, 1, None) + offset
 
@@ -47,7 +47,8 @@ def calculate_copy_number(methylated_noob, unmethylated_noob, offset=None):
     return copy_number
 
 
-def consolidate_values_for_sheet(data_containers, postprocess_func_colname='beta_value', bit='float32', poobah=True, poobah_sig=0.05, exclude_rs=True):
+def consolidate_values_for_sheet(data_containers, postprocess_func_colname='beta_value', bit='float32', poobah=True,
+                                 poobah_sig=0.05, exclude_rs=True):
     """ Transforms results into a single dataframe with all of the function values,
     with probe names in rows, and sample beta values for probes in columns.
 
@@ -66,7 +67,7 @@ def consolidate_values_for_sheet(data_containers, postprocess_func_colname='beta
     Options:
         bit (float16, float32, float64) -- change the default data type from float32
             to another type to save disk space. float16 works fine, but might not be compatible
-            with all numnpy/pandas functions, or with outside packages, so float32 is default.
+            with all numpy/pandas functions, or with outside packages, so float32 is default.
             This is specified from methylprep process command line.
         poobah
             If true, filters by the poobah_pval column. (beta m_val pass True in for this.)
@@ -77,33 +78,38 @@ def consolidate_values_for_sheet(data_containers, postprocess_func_colname='beta
             before exporting to file."""
     poobah_column = 'poobah_pval'
     quality_mask = 'quality_mask'
-    for idx,sample in enumerate(data_containers):
+    merged = None
+
+    for sample in data_containers:
         sample_id = f"{sample.sample.sentrix_id}_{sample.sample.sentrix_position}"
 
-        if poobah == True and poobah_column in sample._SampleDataContainer__data_frame.columns:
+        if poobah and poobah_column in sample._SampleDataContainer__data_frame.columns:
             # remove all failed probes by replacing with NaN before building DF.
-            sample._SampleDataContainer__data_frame.loc[sample._SampleDataContainer__data_frame[poobah_column] >= poobah_sig, postprocess_func_colname] = np.nan
-        elif poobah == True and poobah_column not in sample._SampleDataContainer__data_frame.columns:
+            location = sample._SampleDataContainer__data_frame[poobah_column] >= poobah_sig, postprocess_func_colname
+            sample._SampleDataContainer__data_frame.loc[location] = np.nan
+        elif poobah and poobah_column not in sample._SampleDataContainer__data_frame.columns:
             LOGGER.warning('DEBUG: missing poobah')
 
-        if sample.quality_mask == True and quality_mask in sample._SampleDataContainer__data_frame.columns:
+        if sample.quality_mask and quality_mask in sample._SampleDataContainer__data_frame.columns:
             # blank there probes where quality_mask == 0
-            sample._SampleDataContainer__data_frame.loc[sample._SampleDataContainer__data_frame[quality_mask] == 0, postprocess_func_colname] = np.nan
+            location = sample._SampleDataContainer__data_frame[quality_mask] == 0, postprocess_func_colname
+            sample._SampleDataContainer__data_frame.loc[location] = np.nan
 
         this_sample_values = sample._SampleDataContainer__data_frame[postprocess_func_colname]
 
-        if exclude_rs: # dropping rows before exporting
+        if exclude_rs:  # dropping rows before exporting
             mask_snps = (sample._SampleDataContainer__data_frame.index.str.startswith('rs'))
-            this_sample_values = this_sample_values.loc[ ~mask_snps ]
+            this_sample_values = this_sample_values.loc[~mask_snps]
 
-        if idx == 0:
+        if merged is None:
             merged = pd.DataFrame(this_sample_values, columns=[postprocess_func_colname])
-            merged.rename(columns={postprocess_func_colname: sample_id}, inplace=True)
-            continue
-        merged = pd.concat([merged, this_sample_values], axis=1)
+        else:
+            merged = pd.concat([merged, this_sample_values], axis=1)
         merged.rename(columns={postprocess_func_colname: sample_id}, inplace=True)
-    if bit != 'float32' and bit in ('float64','float16'):
+
+    if bit != 'float32' and bit in ('float64', 'float16'):
         merged = merged.astype(bit)
+
     return merged
 
 
@@ -159,17 +165,17 @@ Notes:
         SNP['snp_meth'].values,
         SNP['snp_unmeth'].values,
     )
-    SNP = SNP[['snp_beta','snp_meth','snp_unmeth']]
+    SNP = SNP[['snp_beta', 'snp_meth', 'snp_unmeth']]
 
     # space saving, but catches NaN bugs without breaking.
-    if SNP[['snp_meth','snp_unmeth']].isna().sum().sum() == 0:
+    if SNP[['snp_meth', 'snp_unmeth']].isna().sum().sum() == 0:
         SNP['snp_meth'] = SNP['snp_meth'].apply(pd.to_numeric, downcast='unsigned')
         SNP['snp_unmeth'] = SNP['snp_unmeth'].apply(pd.to_numeric, downcast='unsigned')
-    if CONTROL[['Mean_Value_Green','Mean_Value_Red']].isna().sum().sum() == 0:
+    if CONTROL[['Mean_Value_Green', 'Mean_Value_Red']].isna().sum().sum() == 0:
         CONTROL['Mean_Value_Green'] = CONTROL['Mean_Value_Green'].apply(pd.to_numeric, downcast='unsigned')
         CONTROL['Mean_Value_Red'] = CONTROL['Mean_Value_Red'].apply(pd.to_numeric, downcast='unsigned')
 
-    CONTROL = CONTROL.join(SNP, how='outer').round({'snp_beta':3})
+    CONTROL = CONTROL.join(SNP, how='outer').round({'snp_beta': 3})
     # finally, copy 'design' col from manifest, if exists
     if 'design' in container.man.columns:
         probe_designs = container.man[['design']]
@@ -177,7 +183,8 @@ Notes:
     return CONTROL
 
 
-def consolidate_mouse_probes(data_containers, filename_or_fileobj, file_format, object_name='mouse_data_frame', poobah_column='poobah_pval', poobah_sig=0.05):
+def consolidate_mouse_probes(data_containers, filename_or_fileobj, file_format, object_name='mouse_data_frame',
+                             poobah_column='poobah_pval', poobah_sig=0.05):
     """ these probes have 'Multi'|'Random' in `design` col of mouse manifest. used to populate 'mouse_probes.pkl'.
     pre v1.4.6: ILLUMINA_MOUSE specific probes (starting with 'rp' for repeat sequence or 'mu' for murine, 'uk' for unknown-experimental)
     stored as data_container.mouse_data_frame.
@@ -186,21 +193,22 @@ def consolidate_mouse_probes(data_containers, filename_or_fileobj, file_format, 
         a dict of dataframes like processed.csv format, but only mouse probes.
         keys are sample_ids -- values are dataframes"""
     out = dict()
-    for idx,sample in enumerate(data_containers):
+    for idx, sample in enumerate(data_containers):
         sample_id = f"{sample.sample.sentrix_id}_{sample.sample.sentrix_position}"
         data_frame = getattr(sample, object_name)
-        data_frame = data_frame.round({'noob_meth':0, 'noob_unmeth':0, 'm_value':3, 'beta_value':3, 'cm_value':3,
-            'meth':0, 'unmeth':0, 'poobah_pval':3})
+        data_frame = data_frame.round({'noob_meth': 0, 'noob_unmeth': 0, 'm_value': 3, 'beta_value': 3, 'cm_value': 3,
+                                       'meth': 0, 'unmeth': 0, 'poobah_pval': 3})
         out[sample_id] = data_frame
 
-    if is_file_like(filename_or_fileobj): # and file_format == 'pickle':
+    if is_file_like(filename_or_fileobj):  # and file_format == 'pickle':
         pickle.dump(out, filename_or_fileobj)
     #elif is_file_like(filename_or_fileobj) and file_format == 'parquet':
 
-    else: #except TypeError: # File must have a write attribute
+    else:  #except TypeError: # File must have a write attribute
         with open(filename_or_fileobj, 'wb') as f:
             pickle.dump(out, f)
     return
+
 
 def merge_batches(num_batches, data_dir, filepattern, file_format):
     """for each of the output pickle file types,
@@ -210,21 +218,21 @@ def merge_batches(num_batches, data_dir, filepattern, file_format):
     suffix = 'parquet' if file_format == 'parquet' else 'pkl'
     for num in range(num_batches):
         try:
-            filename = f"{filepattern}_{num+1}.{suffix}"
+            filename = f"{filepattern}_{num + 1}.{suffix}"
             part = Path(data_dir, filename)
             if part.exists() and file_format == 'parquet':
-                dfs.append( pd.read_parquet(part) )
+                dfs.append(pd.read_parquet(part))
             elif part.exists():
-                dfs.append( pd.read_pickle(part) )
+                dfs.append(pd.read_pickle(part))
         except Exception as e:
             LOGGER.error(f'error merging batch {num} of {filepattern}')
-    if dfs: # pipeline passes in all filenames, but not all exist
+    if dfs:  # pipeline passes in all filenames, but not all exist
         dfs = pd.concat(dfs, axis='columns', join='inner')
         outfile_name = Path(data_dir, f"{filepattern}.{suffix}")
         LOGGER.info(f"{filepattern}: {dfs.shape}")
         func = dfs.to_parquet if file_format == 'parquet' else dfs.to_pickle
         func(str(outfile_name))
-        del dfs # save memory.
+        del dfs  # save memory.
 
         # confirm file saved ok.
         if not Path(outfile_name).exists():
@@ -233,7 +241,7 @@ def merge_batches(num_batches, data_dir, filepattern, file_format):
 
     # now delete the parts
     for num in range(num_batches):
-        filename = f"{filepattern}_{num+1}.{suffix}"
+        filename = f"{filepattern}_{num + 1}.{suffix}"
         part = Path(data_dir, filename)
         if part.exists():
-            part.unlink() # delete it
+            part.unlink()  # delete it

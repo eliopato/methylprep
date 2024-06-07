@@ -2,7 +2,7 @@
 import logging
 import numpy as np
 import pandas as pd
-from ..utils.progress_bar import * # checks environment and imports tqdm appropriately.
+from ..utils.progress_bar import *  # checks environment and imports tqdm appropriately.
 from collections import Counter
 from pathlib import Path
 import pickle
@@ -10,11 +10,8 @@ import sys
 # App
 from ..files import Manifest, get_sample_sheet, create_sample_sheet
 from ..models import (
-    Channel,
-    #MethylationDataset,
     SigSet,
     ArrayType,
-    #get_raw_datasets,
     get_array_type,
     parse_sample_sheet_into_idat_datasets,
 )
@@ -27,13 +24,12 @@ from .postprocess import (
     consolidate_mouse_probes,
     merge_batches,
 )
-from ..utils import ensure_directory_exists, is_file_like
+from ..utils import ensure_directory_exists
 from .preprocess import preprocess_noob, _apply_sesame_quality_mask
 from .p_value_probe_detection import _pval_sesame_preprocess, _pval_neg_ecdf
 from .infer_channel_switch import infer_type_I_probes
 from .dye_bias import nonlinear_dye_bias_correction
 from .multi_array_idat_batches import check_array_folders
-
 
 __all__ = ['SampleDataContainer', 'run_pipeline', 'consolidate_values_for_sheet', 'make_pipeline']
 
@@ -159,13 +155,13 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
             7 apply the final estimator function (beta, m_value, or copy number) to all data
             8 export all the data into multiple files, as defined by pipeline
         """
-    #local_vars = list(locals().items())
-    #print([(key,val) for key,val in local_vars])
+    # local_vars = list(locals().items())
+    # print([(key,val) for key,val in local_vars])
     # support for the make_pipeline wrapper function here; a more structured way to pass in args like sklearn.
     # unexposed flags all start with 'do_': (None will retain default settings)
-    do_infer_channel_switch = None # defaults to sesame(True)
-    do_noob = None # defaults to True
-    do_nonlinear_dye_bias = True # defaults to sesame(True), but can be False (linear) or None (omit step)
+    do_infer_channel_switch = None  # defaults to sesame(True)
+    do_noob = None  # defaults to True
+    do_nonlinear_dye_bias = True  # defaults to sesame(True), but can be False (linear) or None (omit step)
     do_save_noob = None
     do_mouse = True
     hidden_kwargs = ['pipeline_steps', 'pipeline_exports', 'debug']
@@ -176,10 +172,10 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
                     raise SystemExit(f"One of your parameters ({kwarg}) was not recognized. Did you misspell it?")
                 else:
                     raise KeyError(f"One of your parameters ({kwarg}) was not recognized. Did you misspell it?")
-    if sesame == True:
-        poobah = True # if sesame is True and poobah is False, it hangs forever.
-    if sesame == False and 'pipeline_steps' not in kwargs:
-        do_nonlinear_dye_bias = False # FORCE minfi to do linear
+    if sesame:
+        poobah = True  # if sesame is True and poobah is False, it hangs forever.
+    if not sesame and 'pipeline_steps' not in kwargs:
+        do_nonlinear_dye_bias = False  # FORCE minfi to do linear
 
     if kwargs != {} and 'pipeline_steps' in kwargs:
         pipeline_steps = kwargs.get('pipeline_steps')
@@ -189,7 +185,7 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
             quality_mask = True
             do_noob = True
             do_nonlinear_dye_bias = True
-            sesame = None # prevent this from overriding elsewhere
+            sesame = None  # prevent this from overriding elsewhere
         else:
             do_infer_channel_switch = True if 'infer_channel_switch' in pipeline_steps else False
             poobah = True if 'poobah' in pipeline_steps else False
@@ -200,18 +196,18 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
             elif 'linear_dye_bias' in pipeline_steps:
                 do_nonlinear_dye_bias = False
             else:
-                do_nonlinear_dye_bias = None # omit step
-            sesame = None if sesame == True else sesame
+                do_nonlinear_dye_bias = None  # omit step
+            sesame = None if sesame else sesame
     if kwargs != {} and 'pipeline_exports' in kwargs:
         pipeline_exports = kwargs.get('pipeline_exports')
         if 'all' in pipeline_exports:
-            export = True # csv
-            save_uncorrected = True # meth, unmeth
-            do_save_noob = True # noob_meth, noob_unmeth
-            export_poobah = True # poobah
-            meta_data_frame = True # sample_sheet_meta_data
-            do_mouse = True # 'mouse' -- only if array_type matches; False will suppress export
-            save_control = True # control
+            export = True  # csv
+            save_uncorrected = True  # meth, unmeth
+            do_save_noob = True  # noob_meth, noob_unmeth
+            export_poobah = True  # poobah
+            meta_data_frame = True  # sample_sheet_meta_data
+            do_mouse = True  # 'mouse' -- only if array_type matches; False will suppress export
+            save_control = True  # control
         else:
             export = True if 'csv' in pipeline_exports else False
             save_uncorrected = True if ('meth' in pipeline_exports or 'unmeth' in pipeline_exports) else False
@@ -230,28 +226,30 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
     suffix = 'parquet' if file_format == 'parquet' else 'pkl'
 
     LOGGER.info('Running pipeline in: %s', data_dir)
-    if bit not in ('float64','float32','float16'):
-        raise ValueError("Input 'bit' must be one of ('float64','float32','float16') or ommitted.")
+    if bit not in ('float64', 'float32', 'float16'):
+        raise ValueError("Input 'bit' must be one of ('float64','float32','float16') or omitted.")
     if sample_name:
         LOGGER.info('Sample names: {0}'.format(sample_name))
 
     if make_sample_sheet:
-        create_sample_sheet(data_dir)
+        sample_sheet_filepath = create_sample_sheet(data_dir)
+
     try:
         sample_sheet = get_sample_sheet(data_dir, filepath=sample_sheet_filepath)
     except Exception as e:
         # e will be 'Too many sample sheets in this directory.'
-        instructions = check_array_folders(data_dir, verbose=True) # prints instructions for GEO multi-array data packages.
-        if instructions != []:
-            instructions = '\n'.join(instructions)
-            print(f"This folder contains idats for multiple types of arrays. Run each array separately:\n{instructions}")
+        # prints instructions for GEO multi-array data packages.
+        instructions = check_array_folders(data_dir)
+        if instructions:
+            instructions = '\n' + '\n'.join(instructions)
+            print(f"This folder contains idats for multiple types of arrays. Run each array separately:{instructions}")
             sys.exit(0)
         raise Exception(e)
 
     samples = sample_sheet.get_samples()
     if sample_sheet.renamed_fields != {}:
         show_fields = []
-        for k,v in sample_sheet.renamed_fields.items():
+        for k, v in sample_sheet.renamed_fields.items():
             if v != k:
                 show_fields.append(f"{k} --> {v}")
             else:
@@ -259,13 +257,14 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
         LOGGER.info(f"Found {len(show_fields)} additional fields in sample_sheet:\n{' | '.join(show_fields)}")
 
     if sample_name is not None:
-        if not isinstance(sample_name,(list,tuple)):
+        if not isinstance(sample_name, (list, tuple)):
             raise SystemExit(f"sample_name must be a list of sample_names")
         matched_samples = [sample.name for sample in samples if sample.name in sample_name]
         if set(matched_samples) != set(sample_name):
             possible_sample_names = [sample.name for sample in samples]
             unmatched_samples = [_sample for _sample in sample_name if _sample not in possible_sample_names]
-            raise SystemExit(f"Your sample_name filter does not match the samplesheet; these samples were not found: {unmatched_samples}")
+            raise SystemExit(
+                f"Your sample_name filter does not match the samplesheet; these samples were not found: {unmatched_samples}")
 
     batches = []
     batch = []
@@ -278,7 +277,7 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
                 continue
 
             # batch uses Sample_Name, so ensure these exist
-            if sample.name in (None,''):
+            if sample.name in (None, ''):
                 sample.name = f'Sample_{sample_id_counter}'
                 sample_id_counter += 1
             # and are unique.
@@ -290,8 +289,7 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
                 batch.append(sample.name)
             else:
                 batches.append(batch)
-                batch = []
-                batch.append(sample.name)
+                batch = [sample.name]
         batches.append(batch)
     else:
         for sample in samples:
@@ -299,7 +297,7 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
                 continue
 
             # batch uses Sample_Name, so ensure these exist
-            if sample.name in (None,''):
+            if sample.name in (None, ''):
                 sample.name = f'Sample_{sample_id_counter}'
                 sample_id_counter += 1
             # and are unique.
@@ -312,53 +310,58 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
 
     temp_data_pickles = []
     control_snps = {}
-    #data_containers = [] # returned when this runs in interpreter, and < 200 samples
+    # data_containers = [] # returned when this runs in interpreter, and < 200 samples
     # v1.3.0 memory fix: save each batch_data_containers object to disk as temp, then load and combine at end.
     # 200 samples still uses 4.8GB of memory/disk space (float64)
-    missing_probe_errors = {'noob': [], 'raw':[]}
+    missing_probe_errors = {'noob': [], 'raw': []}
 
     for batch_num, batch in enumerate(batches, 1):
-        idat_datasets = parse_sample_sheet_into_idat_datasets(sample_sheet, sample_name=batch, from_s3=None, meta_only=False, bit=bit) # replaces get_raw_datasets
-        # idat_datasets are a list; each item is a dict of {'green_idat': ..., 'red_idat':..., 'array_type', 'sample'} to feed into SigSet
-        #--- pre v1.5 --- raw_datasets = get_raw_datasets(sample_sheet, sample_name=batch)
-        if array_type is None: # use must provide either the array_type or manifest_filepath.
+        idat_datasets = parse_sample_sheet_into_idat_datasets(sample_sheet, sample_name=batch, from_s3=None,
+                                                              meta_only=False, bit=bit)  # replaces get_raw_datasets
+        # idat_datasets are a list; each item is a dict of {'green_idat': ..., 'red_idat':..., 'array_type', 'sample'}
+        # to feed into SigSet
+        # --- pre v1.5 --- raw_datasets = get_raw_datasets(sample_sheet, sample_name=batch)
+        if array_type is None:  # use must provide either the array_type or manifest_filepath.
             array_type = get_array_type(idat_datasets)
-        manifest = Manifest(array_type, manifest_filepath) # this allows each batch to be a different array type; but not implemented yet. common with older GEO sets.
+        # this allows each batch to be a different array type; but not implemented yet. common with older GEO sets.
+        manifest = Manifest(array_type, manifest_filepath)
 
         batch_data_containers = []
-        export_paths = set() # inform CLI user where to look
+        export_paths = set()  # inform CLI user where to look
         for idat_dataset_pair in tqdm(idat_datasets, total=len(idat_datasets), desc="Processing samples"):
             data_container = SampleDataContainer(
                 idat_dataset_pair=idat_dataset_pair,
                 manifest=manifest,
                 retain_uncorrected_probe_intensities=save_uncorrected,
                 bit=bit,
-                switch_probes=(do_infer_channel_switch or sesame), # this applies all sesame-specific options
-                quality_mask= (quality_mask or sesame or False), # this applies all sesame-specific options (beta / noob offsets too)
-                do_noob=(do_noob if do_noob != None else True), # None becomes True, but make_pipeline can override with False
-                pval=poobah, #defaults to False as of v1.4.0
+                switch_probes=(do_infer_channel_switch or sesame),  # this applies all sesame-specific options
+                quality_mask=(quality_mask or sesame or False),
+                # this applies all sesame-specific options (beta / noob offsets too)
+                do_noob=(do_noob if do_noob is not None else True),
+                # None becomes True, but make_pipeline can override with False
+                pval=poobah,  # defaults to False as of v1.4.0
                 poobah_decimals=poobah_decimals,
                 poobah_sig=poobah_sig,
-                do_nonlinear_dye_bias=do_nonlinear_dye_bias, # start of run_pipeline sets this to True, False, or None
-                debug=kwargs.get('debug',False),
+                do_nonlinear_dye_bias=do_nonlinear_dye_bias,  # start of run_pipeline sets this to True, False, or None
+                debug=kwargs.get('debug', False),
                 sesame=sesame,
                 pneg_ecdf=pneg_ecdf,
                 file_format=file_format,
             )
             data_container.process_all()
 
-            if export: # as CSV or parquet
+            if export:  # as CSV or parquet
                 suffix = 'parquet' if file_format == 'parquet' else 'csv'
                 output_path = data_container.sample.get_export_filepath(extension=suffix)
                 data_container.export(output_path)
                 export_paths.add(output_path)
                 # this tidies-up the tqdm by moving errors to end of batch warning.
-                if data_container.noob_processing_missing_probe_errors != []:
+                if data_container.noob_processing_missing_probe_errors:
                     missing_probe_errors['noob'].extend(data_container.noob_processing_missing_probe_errors)
-                if data_container.raw_processing_missing_probe_errors != []:
+                if data_container.raw_processing_missing_probe_errors:
                     missing_probe_errors['raw'].extend(data_container.raw_processing_missing_probe_errors)
 
-            if save_control: # Process and consolidate now. Keep in memory. These files are small.
+            if save_control:  # Process and consolidate now. Keep in memory. These files are small.
                 sample_id = f"{data_container.sample.sentrix_id}_{data_container.sample.sentrix_position}"
                 control_df = one_sample_control_snp(data_container)
                 control_snps[sample_id] = control_df
@@ -381,9 +384,11 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
                 del data_container.ibR
             batch_data_containers.append(data_container)
 
-            #if str(data_container.sample) == '200069280091_R01C01':
-            #    print(f"200069280091_R01C01 -- cg00035864 -- meth -- {data_container._SampleDataContainer__data_frame['meth']['cg00035864']}")
-            #    print(f"200069280091_R01C01 -- cg00035864 -- unmeth -- {data_container._SampleDataContainer__data_frame['unmeth']['cg00035864']}")
+            # if str(data_container.sample) == '200069280091_R01C01':
+            #    print(f"200069280091_R01C01 -- cg00035864 -- meth -- "
+            #          f"{data_container._SampleDataContainer__data_frame['meth']['cg00035864']}")
+            #    print(f"200069280091_R01C01 -- cg00035864 -- unmeth -- "
+            #          f"{data_container._SampleDataContainer__data_frame['unmeth']['cg00035864']}")
 
         if kwargs.get('debug'): LOGGER.info('[finished SampleDataContainer processing]')
 
@@ -394,31 +399,37 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
             else:
                 df = df.astype('float32')
             if df.shape[1] > df.shape[0]:
-                df = df.transpose() # put probes as columns for faster loading.
+                df = df.transpose()  # put probes as columns for faster loading.
             # sort sample names
             df = df.sort_index().reindex(sorted(df.columns), axis=1)
             if file_format == 'parquet':
                 # put probes in rows; format is optimized for same-type storage so it won't really matter
-                df.to_parquet(Path(data_dir,f"{out_name}.parquet"))
+                df.to_parquet(Path(data_dir, f"{out_name}.parquet"))
             else:
                 df.to_pickle(Path(data_dir, f"{out_name}.pkl"))
             LOGGER.info(f"saved {out_name}")
 
         if betas:
-            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='beta_value', bit=bit, poobah=poobah, exclude_rs=True)
+            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='beta_value', bit=bit,
+                                              poobah=poobah, exclude_rs=True)
             _prepare_save_out_file(df, 'beta_values')
         if m_value:
-            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='m_value', bit=bit, poobah=poobah, exclude_rs=True)
+            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='m_value', bit=bit,
+                                              poobah=poobah, exclude_rs=True)
             _prepare_save_out_file(df, 'm_values')
         if (do_save_noob is not False) or betas or m_value:
-            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='noob_meth', bit=bit, poobah=poobah, exclude_rs=True)
+            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='noob_meth', bit=bit,
+                                              poobah=poobah, exclude_rs=True)
             _prepare_save_out_file(df, 'noob_meth_values', uint16=True)
-            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='noob_unmeth', bit=bit, poobah=poobah, exclude_rs=True)
+            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='noob_unmeth', bit=bit,
+                                              poobah=poobah, exclude_rs=True)
             _prepare_save_out_file(df, 'noob_unmeth_values', uint16=True)
         if save_uncorrected:
-            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='meth', bit=bit, poobah=False, exclude_rs=True)
+            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='meth', bit=bit,
+                                              poobah=False, exclude_rs=True)
             _prepare_save_out_file(df, 'meth_values', uint16=True)
-            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='unmeth', bit=bit, poobah=False, exclude_rs=True)
+            df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='unmeth', bit=bit,
+                                              poobah=False, exclude_rs=True)
             _prepare_save_out_file(df, 'unmeth_values', uint16=True)
 
         if manifest.array_type == ArrayType.ILLUMINA_MOUSE and do_mouse:
@@ -438,30 +449,32 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
             if all(['poobah_pval' in e._SampleDataContainer__data_frame.columns for e in batch_data_containers]):
                 # this option will save pvalues for all samples, with sample_ids in the column headings and probe names in index.
                 # this sets poobah to false in kwargs, otherwise some pvalues would be NaN I think.
-                df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='poobah_pval', bit=bit, poobah=False, poobah_sig=poobah_sig, exclude_rs=True)
+                df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='poobah_pval',
+                                                  bit=bit, poobah=False, poobah_sig=poobah_sig, exclude_rs=True)
                 _prepare_save_out_file(df, 'poobah_values')
 
             if all(['pNegECDF_pval' in e._SampleDataContainer__data_frame.columns for e in batch_data_containers]):
                 # this option will save negative control based pvalues for all samples, with
                 # sample_ids in the column headings and probe names in index.
-                df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='pNegECDF_pval', bit=bit, poobah=False, poobah_sig=poobah_sig, exclude_rs=True)
+                df = consolidate_values_for_sheet(batch_data_containers, postprocess_func_colname='pNegECDF_pval',
+                                                  bit=bit, poobah=False, poobah_sig=poobah_sig, exclude_rs=True)
                 _prepare_save_out_file(df, 'pNegECDF_values')
 
         # v1.3.0 fixing mem problems: pickling each batch_data_containers object then reloading it later.
 
         # consolidating data_containers this will break with really large sample sets, so skip here.
-        #if batch_size and batch_size >= 200:
+        # if batch_size and batch_size >= 200:
         #    continue
-        #data_containers.extend(batch_data_containers)
+        # data_containers.extend(batch_data_containers)
 
         pkl_name = f"_temp_data_{batch_num}.pkl"
-        with open(Path(data_dir,pkl_name), 'wb') as temp_data:
+        with open(Path(data_dir, pkl_name), 'wb') as temp_data:
             pickle.dump(batch_data_containers, temp_data)
             temp_data_pickles.append(pkl_name)
 
     del batch_data_containers
 
-    if meta_data_frame == True:
+    if meta_data_frame:
         meta_frame = sample_sheet.build_meta_data(samples)
         if file_format == 'parquet':
             meta_frame_filename = f'sample_sheet_meta_data.parquet'
@@ -475,12 +488,12 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
     if save_control:
         if file_format == 'parquet':
             control_filename = f'control_probes.parquet'
-            control = pd.concat(control_snps) # creates multiindex
+            control = pd.concat(control_snps)  # creates multiindex
             (control.reset_index()
-                .rename(columns={'level_0': 'Sentrix_ID', 'level_1': 'IlmnID'})
-                .astype({'IlmnID':str})
-                .to_parquet('control_probes.parquet')
-            )
+             .rename(columns={'level_0': 'Sentrix_ID', 'level_1': 'IlmnID'})
+             .astype({'IlmnID': str})
+             .to_parquet('control_probes.parquet')
+             )
         else:
             control_filename = f'control_probes.pkl'
             with open(Path(data_dir, control_filename), 'wb') as control_file:
@@ -488,14 +501,18 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
         LOGGER.info(f"saved {control_filename}")
 
     # summarize any processing errors
-    if missing_probe_errors['noob'] != []:
-        avg_missing_per_sample = int(round(sum([item[1] for item in missing_probe_errors['noob']])/len(missing_probe_errors['noob'])))
+    if missing_probe_errors['noob']:
+        avg_missing_per_sample = int(
+            round(sum([item[1] for item in missing_probe_errors['noob']]) / len(missing_probe_errors['noob'])))
         samples_affected = len(set([item[0] for item in missing_probe_errors['noob']]))
-        LOGGER.warning(f"{samples_affected} samples were missing (or had infinite values) NOOB meth/unmeth probe values (average {avg_missing_per_sample} per sample)")
-    if missing_probe_errors['raw'] != []:
-        avg_missing_per_sample = int(round(sum([item[1] for item in missing_probe_errors['raw']])/len(missing_probe_errors['raw'])))
+        LOGGER.warning(
+            f"{samples_affected} samples were missing (or had infinite values) NOOB meth/unmeth probe values (average {avg_missing_per_sample} per sample)")
+    if missing_probe_errors['raw']:
+        avg_missing_per_sample = int(
+            round(sum([item[1] for item in missing_probe_errors['raw']]) / len(missing_probe_errors['raw'])))
         samples_affected = len(set([item[0] for item in missing_probe_errors['raw']]))
-        LOGGER.warning(f"{samples_affected} samples were missing (or had infinite values) RAW meth/unmeth probe values (average {avg_missing_per_sample} per sample)")
+        LOGGER.warning(
+            f"{samples_affected} samples were missing (or had infinite values) RAW meth/unmeth probe values (average {avg_missing_per_sample} per sample)")
 
     # batch processing done; consolidate and return data. This uses much more memory, but not called if in batch mode.
     if batch_size and batch_size >= 200:
@@ -503,17 +520,18 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
         del batch_data_containers
         for temp_data in temp_data_pickles:
             temp_file = Path(data_dir, temp_data)
-            temp_file.unlink(missing_ok=True) # delete it
+            temp_file.unlink(missing_ok=True)  # delete it
         return
 
     # consolidate batches and delete parts, if possible
-    for file_type in ['beta_values', 'm_values', 'meth_values', 'unmeth_values',
-        'noob_meth_values', 'noob_unmeth_values', 'mouse_probes', 'poobah_values']: # control_probes.pkl not included yet
+    for file_type in ['beta_values', 'm_values', 'meth_values', 'unmeth_values', 'noob_meth_values',
+                      'noob_unmeth_values', 'mouse_probes', 'poobah_values']:  # control_probes.pkl not included yet
         test_parts = list([str(temp_file) for temp_file in Path(data_dir).rglob(f'{file_type}*.{suffix}')])
         num_batches = len(test_parts)
         # ensures that only the file_types that appear to be selected get merged.
-        #print(f"DEBUG num_batches {num_batches}, batch_size {batch_size}, file_type {file_type}")
-        if batch_size and num_batches >= 1: #--- if the batch size was larger than the number of total samples, this will still drop the _1
+        # print(f"DEBUG num_batches {num_batches}, batch_size {batch_size}, file_type {file_type}")
+        if batch_size and num_batches >= 1:
+            # --- if the batch size was larger than the number of total samples, this will still drop the _1
             merge_batches(num_batches, data_dir, file_type, file_format)
 
     # reload all the big stuff -- after everything important is done.
@@ -521,17 +539,19 @@ def run_pipeline(data_dir, array_type=None, export=False, manifest_filepath=None
     data_containers = []
     for temp_data in temp_data_pickles:
         temp_file = Path(data_dir, temp_data)
-        if temp_file.exists(): #possibly user deletes file while processing, since these are big
-            with open(temp_file,'rb') as _file:
+        if temp_file.exists():  # possibly user deletes file while processing, since these are big
+            with open(temp_file, 'rb') as _file:
                 batch_data_containers = pickle.load(_file)
                 data_containers.extend(batch_data_containers)
                 del batch_data_containers
-            temp_file.unlink() # delete it after loading.
+            temp_file.unlink()  # delete it after loading.
 
     if betas:
-        return consolidate_values_for_sheet(data_containers, postprocess_func_colname='beta_value', poobah=poobah, exclude_rs=True)
+        return consolidate_values_for_sheet(data_containers, postprocess_func_colname='beta_value', poobah=poobah,
+                                            exclude_rs=True)
     elif m_value:
-        return consolidate_values_for_sheet(data_containers, postprocess_func_colname='m_value', poobah=poobah, exclude_rs=True)
+        return consolidate_values_for_sheet(data_containers, postprocess_func_colname='m_value', poobah=poobah,
+                                            exclude_rs=True)
     else:
         return data_containers
 
@@ -568,22 +588,23 @@ class SampleDataContainer(SigSet):
         self.pval = pval
         self.poobah_decimals = poobah_decimals
         self.poobah_sig = poobah_sig
-        self.quality_mask = quality_mask # if True, filters sesame's standard sketchy probes out of 450k, EPIC, EPIC+ arrays.
+        self.quality_mask = quality_mask  # if True, filters sesame's standard sketchy probes out of 450k, EPIC, EPIC+ arrays.
         self.switch_probes = switch_probes
         self.do_nonlinear_dye_bias = do_nonlinear_dye_bias
         self.green_idat = idat_dataset_pair['green_idat']
         self.red_idat = idat_dataset_pair['red_idat']
         self.sample = idat_dataset_pair['sample']
-        self.retain_uncorrected_probe_intensities=retain_uncorrected_probe_intensities
-        self.sesame = sesame # defines offsets in functions
+        self.retain_uncorrected_probe_intensities = retain_uncorrected_probe_intensities
+        self.sesame = sesame  # defines offsets in functions
         # pneg_ecdf defines if negative control based pvalue is calculated - will use poobah_decimals for rounding
         self.pneg_ecdf = pneg_ecdf
-        self.data_type = 'float32' if bit == None else bit # options: (float64, float32, or float16)
+        self.data_type = 'float32' if bit is None else bit  # options: (float64, float32, or float16)
         self.file_format = file_format
         if debug:
-            print(f'DEBUG SDC: sesame {self.sesame} switch {self.switch_probes} noob {self.do_noob} poobah {self.pval} mask {self.quality_mask}, dye {self.do_nonlinear_dye_bias}')
+            print(
+                f'DEBUG SDC: sesame {self.sesame} switch {self.switch_probes} noob {self.do_noob} poobah {self.pval} mask {self.quality_mask}, dye {self.do_nonlinear_dye_bias}')
 
-        self.manifest = manifest # used by inter_channel_switch only.
+        self.manifest = manifest  # used by inter_channel_switch only.
         if self.switch_probes:
             # apply inter_channel_switch here; uses raw_dataset and manifest only; then updates self.raw_dataset
             # these are read from idats directly, not SigSet, so need to be modified at source.
@@ -595,16 +616,16 @@ class SampleDataContainer(SigSet):
         del self.manifest
         del manifest
 
-        if self.data_type not in ('float64','float32','float16'):
+        if self.data_type not in ('float64', 'float32', 'float16'):
             raise ValueError(f"invalid data_type: {self.data_type} should be one of ('float64','float32','float16')")
 
         if self.debug:
             print(f"DEBUG SDC params:")
-            lists = ['red_switched','green_switched']
+            lists = ['red_switched', 'green_switched']
             exclude = ['data_channel', 'man', 'snp_man', 'ctl_man', 'address_code', 'ctrl_green', 'ctrl_red', 'II',
-            'IG', 'IR', 'oobG', 'oobR', 'methylated', 'unmethylated', 'snp_methylated', 'snp_unmethylated', 'ibG', 'ibR',
-            'mouse_probes_mask',            ]
-            for key,value in self.__dict__.items():
+                       'IG', 'IR', 'oobG', 'oobR', 'methylated', 'unmethylated', 'snp_methylated', 'snp_unmethylated',
+                       'ibG', 'ibR', 'mouse_probes_mask']
+            for key, value in self.__dict__.items():
                 if key in exclude:
                     try:
                         print(f"-- {key}: {value.shape}")
@@ -636,35 +657,40 @@ class SampleDataContainer(SigSet):
         if self.__data_frame:
             return self.__data_frame
 
-        pval_probes_df = _pval_sesame_preprocess(self) if self.pval == True else None
-        pneg_ecdf_probes_df = _pval_neg_ecdf(self) if self.pneg_ecdf == True else None
+        pval_probes_df = _pval_sesame_preprocess(self) if self.pval else None
+        pneg_ecdf_probes_df = _pval_neg_ecdf(self) if self.pneg_ecdf else None
         # output: df with one column named 'poobah_pval'
-        quality_mask_df = _apply_sesame_quality_mask(self) if self.quality_mask == True else None
+        quality_mask_df = _apply_sesame_quality_mask(self) if self.quality_mask else None
         # output: df with one column named 'quality_mask' | if not supported array / custom array: returns nothing.
 
-        if self.do_noob == True:
+        if self.do_noob:
             # apply corrections: bg subtract, then noob (in preprocess.py)
-            preprocess_noob(self, pval_probes_df=pval_probes_df, quality_mask_df=quality_mask_df, nonlinear_dye_correction=self.do_nonlinear_dye_bias, debug=self.debug)
+            preprocess_noob(self, pval_probes_df=pval_probes_df, quality_mask_df=quality_mask_df,
+                            nonlinear_dye_correction=self.do_nonlinear_dye_bias, debug=self.debug)
             #if self.sesame in (None,True):
-                #preprocess_noob(self, pval_probes_df=pval_probes_df, quality_mask_df=quality_mask_df, nonlinear_dye_correction=self.do_nonlinear_dye_bias, debug=self.debug)
-                #if container.__dye_bias_corrected is False: # process failed, so fallback is linear-dye
-                #    print(f'ERROR preprocess_noob sesame-dye: linear_dye_correction={self.do_nonlinear_dye_bias}')
-                #    preprocess_noob(self, linear_dye_correction = True)
+            #preprocess_noob(self, pval_probes_df=pval_probes_df, quality_mask_df=quality_mask_df, nonlinear_dye_correction=self.do_nonlinear_dye_bias, debug=self.debug)
+            #if container.__dye_bias_corrected is False: # process failed, so fallback is linear-dye
+            #    print(f'ERROR preprocess_noob sesame-dye: linear_dye_correction={self.do_nonlinear_dye_bias}')
+            #    preprocess_noob(self, linear_dye_correction = True)
             #if self.sesame is False:
-                # match minfi legacy settings
-                #preprocess_noob(self, pval_probes_df=pval_probes_df, quality_mask_df=quality_mask_df, nonlinear_dye_correction=self.do_nonlinear_dye_bias, debug=self.debug)
+            # match minfi legacy settings
+            #preprocess_noob(self, pval_probes_df=pval_probes_df, quality_mask_df=quality_mask_df, nonlinear_dye_correction=self.do_nonlinear_dye_bias, debug=self.debug)
 
-            if self._SigSet__preprocessed is False:
+            if not self._SigSet__preprocessed:
                 raise ValueError("preprocessing did not run")
 
             # nonlinear_dye_correction is done below, but if sesame if false, revert to previous linear dye method here.
-            self.methylated = self.methylated.rename(columns={'noob_Meth':'noob'}).drop(columns=['used','Unmeth', 'noob_Unmeth'])
-            self.unmethylated = self.unmethylated.rename(columns={'noob_Unmeth':'noob'}).drop(columns=['used','Meth', 'noob_Meth'])
+            self.methylated = self.methylated.rename(columns={'noob_Meth': 'noob'}).drop(
+                columns=['used', 'Unmeth', 'noob_Unmeth'])
+            self.unmethylated = self.unmethylated.rename(columns={'noob_Unmeth': 'noob'}).drop(
+                columns=['used', 'Meth', 'noob_Meth'])
         else:
             # renaming will make dye_bias work later; or I track here and pass in kwargs to dye bias for column names
-            self.methylated = self.methylated[['Meth']].astype('float32').round(0) #.rename(columns={'mean_value':'noob'})
-            self.unmethylated = self.unmethylated[['Unmeth']].astype('float32').round(0) #.rename(columns={'mean_value':'noob'})
-            if self.debug: LOGGER.info('SDC data_frame already exists.') #--- happens with make_pipeline('.',steps=[])
+            self.methylated = self.methylated[['Meth']].astype('float32').round(
+                0)  #.rename(columns={'mean_value':'noob'})
+            self.unmethylated = self.unmethylated[['Unmeth']].astype('float32').round(
+                0)  #.rename(columns={'mean_value':'noob'})
+            if self.debug: LOGGER.info('SDC data_frame already exists.')  #--- happens with make_pipeline('.',steps=[])
 
         if set(self.unmethylated.index) - set(self.methylated.index) != set():
             LOGGER.warning(f"Dropping mismatched probes: {set(self.unmethylated.index) - set(self.methylated.index)}")
@@ -674,11 +700,11 @@ class SampleDataContainer(SigSet):
         try:
             # index: IlmnID | has A | B | Unmeth | Meth | noob_meth | noob_unmeth -- no control or snp probes included
             self.__data_frame = self.methylated.join(
-                self.unmethylated.drop(columns=['AddressA_ID','AddressB_ID']),
+                self.unmethylated.drop(columns=['AddressA_ID', 'AddressB_ID']),
                 lsuffix='_meth', rsuffix='_unmeth',
-                how='inner').drop(columns=['AddressA_ID','AddressB_ID'])
-                # 'inner' join is necessary to avoid dye-bias getting duplicate probes if mismatched data.
-        except KeyError: # for steps=[]
+                how='inner').drop(columns=['AddressA_ID', 'AddressB_ID'])
+            # 'inner' join is necessary to avoid dye-bias getting duplicate probes if mismatched data.
+        except KeyError:  # for steps=[]
             self.__data_frame = self.methylated.join(
                 self.unmethylated,
                 lsuffix='_meth', rsuffix='_unmeth',
@@ -688,24 +714,26 @@ class SampleDataContainer(SigSet):
             self.__data_frame['noob_unmeth'] = self.__data_frame['Unmeth']
 
         if self.pval == True and isinstance(pval_probes_df, pd.DataFrame):
-            pval_probes_df = pval_probes_df.loc[ ~pval_probes_df.index.duplicated() ]
+            pval_probes_df = pval_probes_df.loc[~pval_probes_df.index.duplicated()]
             self.__data_frame = self.__data_frame.join(pval_probes_df, how='inner')
 
         if self.pneg_ecdf == True and isinstance(pneg_ecdf_probes_df, pd.DataFrame):
-            pneg_ecdf_probes_df = pneg_ecdf_probes_df.loc[ ~pneg_ecdf_probes_df.index.duplicated() ]
+            pneg_ecdf_probes_df = pneg_ecdf_probes_df.loc[~pneg_ecdf_probes_df.index.duplicated()]
             self.__data_frame = self.__data_frame.join(pneg_ecdf_probes_df, how='inner')
 
-        self.check_for_probe_loss(f"preprocess_noob sesame={self.sesame} --> {self.methylated.shape} {self.unmethylated.shape}")
+        self.check_for_probe_loss(
+            f"preprocess_noob sesame={self.sesame} --> {self.methylated.shape} {self.unmethylated.shape}")
 
         if self.quality_mask == True and isinstance(quality_mask_df, pd.DataFrame):
             self.__data_frame = self.__data_frame.join(quality_mask_df, how='inner')
 
-        if self.do_nonlinear_dye_bias == True:
+        if self.do_nonlinear_dye_bias:
             nonlinear_dye_bias_correction(self, debug=self.debug)
             # this step ensures that failed probes are not included in the NOOB calculations.
             # but they MUST be included in CSV exports, so I move the failed probes to another df for storage until pipeline.export() needs them.
             if self.quality_mask == True and 'quality_mask' in self.__data_frame.columns:
-                self.__quality_mask_excluded_probes = self.__data_frame.loc[self.__data_frame['quality_mask'].isna(), ['noob_meth','noob_unmeth']]
+                self.__quality_mask_excluded_probes = self.__data_frame.loc[
+                    self.__data_frame['quality_mask'].isna(), ['noob_meth', 'noob_unmeth']]
                 self.__data_frame.loc[self.__data_frame['quality_mask'].isna(), 'noob_meth'] = np.nan
                 self.__data_frame.loc[self.__data_frame['quality_mask'].isna(), 'noob_unmeth'] = np.nan
 
@@ -714,15 +742,15 @@ class SampleDataContainer(SigSet):
             self.__data_frame['Meth'] = self.__data_frame['Meth'].apply(pd.to_numeric, downcast='unsigned')
             self.__data_frame['Unmeth'] = self.__data_frame['Unmeth'].apply(pd.to_numeric, downcast='unsigned')
         for column in self.__data_frame.columns:
-            if column in ['Meth','Unmeth']:
+            if column in ['Meth', 'Unmeth']:
                 continue
-            if self.__data_frame[column].isna().sum() == 0: # and self.__data_frame[column].dtype
+            if self.__data_frame[column].isna().sum() == 0:  # and self.__data_frame[column].dtype
                 self.__data_frame[column] = self.__data_frame[column].apply(pd.to_numeric, downcast='unsigned')
 
-        if self.retain_uncorrected_probe_intensities == False:
-            self.__data_frame = self.__data_frame.drop(columns=['Meth','Unmeth'])
+        if not self.retain_uncorrected_probe_intensities:
+            self.__data_frame = self.__data_frame.drop(columns=['Meth', 'Unmeth'])
         else:
-            self.__data_frame = self.__data_frame.rename(columns={'Meth':'meth', 'Unmeth':'unmeth'})
+            self.__data_frame = self.__data_frame.rename(columns={'Meth': 'meth', 'Unmeth': 'unmeth'})
 
         # reduce to float32 during processing. final output may be 16,32,64 in _postprocess() + export()
         #self.__data_frame = self.__data_frame.astype('float32') --- downcast takes care of this
@@ -748,7 +776,8 @@ class SampleDataContainer(SigSet):
             mouse_probe_count = 0
         self.mouse_data_frame = self.__data_frame[self.__data_frame.index.isin(mouse_probes.index)]
         if mouse_probe_count > 0:
-            if self.debug: LOGGER.info(f"{mouse_probe_count} mouse probes ->> {self.mouse_data_frame.shape[0]} in idat")
+            if self.debug: LOGGER.info(
+                f"{mouse_probe_count} mouse probes ->> {self.mouse_data_frame.shape[0]} in idat")
             # add 'design' column to mouse_data_frame, so it appears in the output. -- needed for 'Random' and 'Multi' filter
             # matches manifest [IlmnID] to df.index
             # NOTE: other manifests have no 'design' column, so avoiding this step with them.
@@ -762,26 +791,28 @@ class SampleDataContainer(SigSet):
         self.__data_frame.sort_index(inplace=True)
         ###### end preprocessing ######
 
-        if hasattr(self, '_SampleDataContainer__quality_mask_excluded_probes') and isinstance(self._SampleDataContainer__quality_mask_excluded_probes, pd.DataFrame):
+        if hasattr(self, '_SampleDataContainer__quality_mask_excluded_probes') and isinstance(
+            self._SampleDataContainer__quality_mask_excluded_probes, pd.DataFrame):
             # these probes are not used in processing, but should appear in the final CSV.
             # and if quality_mask is off, it should skip this step.
             # later: consoldate() should exclude these probes from pickles
             self.__data_frame.update({
                 'noob_meth': self.__quality_mask_excluded_probes['noob_meth'],
                 'noob_unmeth': self.__quality_mask_excluded_probes['noob_unmeth']
-                })
+            })
         self.__data_frame = self.process_beta_value(self.__data_frame)
         self.__data_frame = self.process_m_value(self.__data_frame)
 
         if self.debug:
-            self.check_for_probe_loss(f"816 self.check_for_probe_loss(): self.__data_frame = {self.__data_frame.shape}")
+            self.check_for_probe_loss(
+                f"816 self.check_for_probe_loss(): self.__data_frame = {self.__data_frame.shape}")
 
         if self.array_type == ArrayType.ILLUMINA_MOUSE:
             self.mouse_data_frame = self.process_beta_value(self.mouse_data_frame)
             self.mouse_data_frame = self.process_m_value(self.mouse_data_frame)
             self.mouse_data_frame = self.process_copy_number(self.mouse_data_frame)
 
-        return # self.__data_frame
+        return  # self.__data_frame
 
     def process_m_value(self, input_dataframe):
         """Calculate M value from methylation data"""
@@ -789,10 +820,10 @@ class SampleDataContainer(SigSet):
 
     def process_beta_value(self, input_dataframe, quality_mask_probes=None):
         """Calculate Beta value from methylation data"""
-        if self.sesame == False:
-            offset=100 # minfi code suggest offset of 100, but empirically, seems like the unit tests match 0 instead.
+        if not self.sesame:
+            offset = 100  # minfi code suggest offset of 100, but empirically, seems like the unit tests match 0 instead.
         else:
-            offset=0 # make_pipeline uses sesame=None
+            offset = 0  # make_pipeline uses sesame=None
 
         return self._postprocess(input_dataframe, calculate_beta_value, 'beta_value', offset)
 
@@ -800,20 +831,20 @@ class SampleDataContainer(SigSet):
         """Calculate copy number value from methylation data"""
         return self._postprocess(input_dataframe, calculate_copy_number, 'cm_value')
 
-
     def export(self, output_path):
         """Saves a CSV for each sample with all processing intermediate data"""
         ensure_directory_exists(output_path)
         # ensure smallest possible csv files
-        self.__data_frame = self.__data_frame.round({'noob_meth':0, 'noob_unmeth':0, 'm_value':3, 'beta_value':3,
-            'meth':0, 'unmeth':0, 'poobah_pval':self.poobah_decimals})
+        self.__data_frame = self.__data_frame.round({'noob_meth': 0, 'noob_unmeth': 0, 'm_value': 3, 'beta_value': 3,
+                                                     'meth': 0, 'unmeth': 0, 'poobah_pval': self.poobah_decimals})
         this = self.__data_frame.copy(deep=True)
-        if hasattr(self, '_SampleDataContainer__quality_mask_excluded_probes') and isinstance(self._SampleDataContainer__quality_mask_excluded_probes, pd.DataFrame):
+        if hasattr(self, '_SampleDataContainer__quality_mask_excluded_probes') and isinstance(
+            self._SampleDataContainer__quality_mask_excluded_probes, pd.DataFrame):
             # copy over these failed probes to a dataframe for export
             this.update({
                 'noob_meth': self.__quality_mask_excluded_probes['noob_meth'],
                 'noob_unmeth': self.__quality_mask_excluded_probes['noob_unmeth']
-                })
+            })
         if 'quality_mask' in this.columns:
             this['quality_mask'] = this['quality_mask'].fillna(1)
         # noob columns contain NANs now because of sesame (v1.4.0 to v1.4.5); v1.4.6+ CSVs contain all data, but pickles are filtered.
@@ -935,21 +966,26 @@ The rest of these are additional optional kwargs you can include:
 
      """
     allowed_steps = ['all', 'infer_channel_switch', 'poobah', 'quality_mask', 'noob', 'dye_bias']
-    allowed_exports = ['all', 'csv', 'poobah', 'meth', 'unmeth', 'noob_meth', 'noob_unmeth', 'sample_sheet_meta_data', 'mouse', 'control']
+    allowed_exports = ['all', 'csv', 'poobah', 'meth', 'unmeth', 'noob_meth', 'noob_unmeth', 'sample_sheet_meta_data',
+                       'mouse', 'control']
     allowed_estimators = ['betas', 'beta', 'm_value', 'copy_number', None]
     if steps is None:
         steps = []
     if exports is None:
         exports = []
-    if not isinstance(steps,(tuple, list)) and not set(steps).issubset(set(allowed_steps)):
-        raise ValueError(f"steps, the first argument, must be a list or tuple of names of allowed processing steps: {allowed_steps} or ['all']; you said {steps}")
-    if not isinstance(exports,(tuple, list)) and not set(exports).issubset(set(allowed_exports)):
-        raise ValueError(f"[exports] must be a list or tuple of names of allowed processing steps: {allowed_exports}, or ['all']; you said {exports}")
+    if not isinstance(steps, (tuple, list)) and not set(steps).issubset(set(allowed_steps)):
+        raise ValueError(
+            f"steps, the first argument, must be a list or tuple of names of allowed processing steps: {allowed_steps} or ['all']; you said {steps}")
+    if not isinstance(exports, (tuple, list)) and not set(exports).issubset(set(allowed_exports)):
+        raise ValueError(
+            f"[exports] must be a list or tuple of names of allowed processing steps: {allowed_exports}, or ['all']; you said {exports}")
     if estimator not in set(allowed_estimators):
-        raise ValueError(f"Your chosen final estimator must be one of these: {allowed_estimators}; you said {estimator}")
+        raise ValueError(
+            f"Your chosen final estimator must be one of these: {allowed_estimators}; you said {estimator}")
     if estimator == 'copy_number':
-        raise ValueError("copy_number is not yet suppported. (You can get it in the code, but not with make_pipelines)")
-    if estimator in ('betas','beta'):
+        raise ValueError(
+            "copy_number is not yet suppported. (You can get it in the code, but not with make_pipelines)")
+    if estimator in ('betas', 'beta'):
         kwargs['betas'] = True
     if estimator == 'm_value':
         kwargs['m_value'] = True

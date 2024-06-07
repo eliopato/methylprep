@@ -9,6 +9,7 @@ __all__ = ['infer_type_I_probes']
 
 LOGGER = logging.getLogger(__name__)
 
+
 def infer_type_I_probes(container, debug=False):
     """ Adapted from sesaame from https://github.com/zwdzwd/sesame/blob/RELEASE_3_12/R/channel_inference.R.
     -- pass in a SampleDataContainer
@@ -19,24 +20,25 @@ def infer_type_I_probes(container, debug=False):
     channels = get_infer_channel_probes(container.manifest, container.green_idat, container.red_idat, debug=debug)
     green_I_channel = channels['green']
     red_I_channel = channels['red']
-    ## NAN probes occurs when manifest is not complete
-    ## If there are NA in the probe intensity, exclude these probes.
-    n_red = channels['IR'].count() # == container.IR.count() ## nrow(IR(sset)) | here, I am using count() to ignore missing probes
+    # NAN probes occurs when manifest is not complete
+    # If there are NA in the probe intensity, exclude these probes.
+    n_red = channels[
+        'IR'].count()  # == container.IR.count() ## nrow(IR(sset)) | here, I am using count() to ignore missing probes
     green_I_channel = green_I_channel.dropna()
     red_I_channel = red_I_channel.dropna()
 
     # get the higher of each channel per probe (thus there are 4 values per probe compared here; red meth, red unmeth, green meth, green unmeth)
     red_max = red_I_channel.max(axis=1)
     green_max = green_I_channel.max(axis=1)
-    red_idx = (red_max > green_max) # TRUE mask; FALSE means the channel will be swapped
+    red_idx = (red_max > green_max)  # TRUE mask; FALSE means the channel will be swapped
 
     # min_ib: take the lower of the channels and calculate quantile score,
     # then exclude if lower than the value where 95% of values would be above this range
-    min_ib = pd.DataFrame(np.minimum(red_I_channel.min(axis=1), green_I_channel.min(axis=1))) .quantile(0.95, axis=0)
+    min_ib = pd.DataFrame(np.minimum(red_I_channel.min(axis=1), green_I_channel.min(axis=1))).quantile(0.95, axis=0)
     # min_ib is ONE number, the low-cutoff intensity. == 644 in sesame testing
     min_ib = min_ib.values[0]
     # now compare the higher of each channel and confirm it is always greater than the min_ib
-    big_idx = (np.maximum(red_max, green_max) > min_ib) # a TRUE mask, probes that are OK
+    big_idx = (np.maximum(red_max, green_max) > min_ib)  # a TRUE mask, probes that are OK
     count_probes_to_swap = sum(np.maximum(red_max, green_max) <= min_ib)
     # goal here: create a mask with TRUE/FALSE for every probe that is swapped or not. Then update data.
     # print(f"big_idx: {big_idx}")
@@ -53,8 +55,8 @@ def infer_type_I_probes(container, debug=False):
         if len(red_max) == 0:
             print('No probes were swapped because there are no type-I-ref probes detected!')
         else:
-            percent_probes_ok = 100* sum( np.maximum(red_max, green_max) > min_ib ) / len(red_max)
-            print(f"min_ib: {min_ib}, %swapped: {round(100-percent_probes_ok,3)} ({count_probes_to_swap})")
+            percent_probes_ok = 100 * sum(np.maximum(red_max, green_max) > min_ib) / len(red_max)
+            print(f"min_ib: {min_ib}, %swapped: {round(100 - percent_probes_ok, 3)} ({count_probes_to_swap})")
         print('R2R', R2R, 'G2G', G2G)
         print('R2G', R2G, 'G2R', G2R)
         print('FailedR', FailedR, 'FailedG', FailedG)
@@ -64,7 +66,7 @@ def infer_type_I_probes(container, debug=False):
     G2R_mask = np.where(green_I_channel.index.isin(channels['IG'].index) & red_idx & big_idx, True, False)
 
     # this runs EARLY in processing, so modifying red_idat and green_idat directly.
-    lookup = channels['lookup'] # index are cpg probe names;
+    lookup = channels['lookup']  # index are cpg probe names;
     # Filter lookup to probes that need to be swapped and get a list of all the addresses that belong to them
     R2G_lookup = lookup[lookup.index.isin(red_I_channel.index[R2G_mask])]
     R2G_illumina_ids = R2G_lookup["AddressA_ID"].to_list() + R2G_lookup["AddressB_ID"].to_list()
@@ -85,11 +87,10 @@ def infer_type_I_probes(container, debug=False):
 
     container.red_switched = list(red_I_channel.index[R2G_mask])
     container.green_switched = list(green_I_channel.index[G2R_mask])
-    #print(f"switched {len(container.red_switched)} red and {len(container.green_switched)} green probes")
+    # print(f"switched {len(container.red_switched)} red and {len(container.green_switched)} green probes")
     container.red_idat.probe_means = post_red
     container.green_idat.probe_means = post_green
     return
-
 
 
 def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
@@ -109,14 +110,14 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
     # need: illumina_id in index, (green)'meth', (red)'unmeth'
     idat_meth_unmeth = (
         green_idat.probe_means
-        .rename(columns={'mean_value':'meth'})
+        .rename(columns={'mean_value': 'meth'})
         .sort_index()
         .merge(
-        red_idat.probe_means.rename(columns={'mean_value':'unmeth'}).sort_index(),
-        sort=False,
-        left_index=True,
-        right_index=True)
-        )
+            red_idat.probe_means.rename(columns={'mean_value': 'unmeth'}).sort_index(),
+            sort=False,
+            left_index=True,
+            right_index=True)
+    )
 
     # OOB PROBE values are IR(unmeth) and IG(meth); I'll replace IR(meth) and IG(unmeth) below
     # RED channel; uses AddressA_ID for oob IR(unmeth)
@@ -127,7 +128,7 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
         right_index=True,
         suffixes=(False, False),
     )
-    oobR = oobR[['meth','unmeth']].sort_index()
+    oobR = oobR[['meth', 'unmeth']].sort_index()
     # GREEN channel; AddressB_ID for oob IG(meth)
     oobG = probe_details_IR.merge(
         idat_meth_unmeth,
@@ -136,7 +137,7 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
         right_index=True,
         suffixes=(False, False),
     )
-    oobG = oobG[['meth','unmeth']].sort_index()
+    oobG = oobG[['meth', 'unmeth']].sort_index()
 
     # IN BAND probes should be IR(meth) and IG(unmeth)
     # NOTE: below uses same idat DF as before, but the probe_details from manifest are swapped.
@@ -147,7 +148,7 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
         right_index=True,
         suffixes=(False, False),
     )
-    red_in_band = red_in_band[['meth','unmeth']].sort_index()
+    red_in_band = red_in_band[['meth', 'unmeth']].sort_index()
     green_in_band = probe_details_IG.merge(
         idat_meth_unmeth,
         how='inner',
@@ -155,7 +156,7 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
         right_index=True,
         suffixes=(False, False),
     )
-    green_in_band = green_in_band[['meth','unmeth']].sort_index()
+    green_in_band = green_in_band[['meth', 'unmeth']].sort_index()
 
     ## HACK: I can't read/get idats to match sesame exactly, so moving columns around to match
     # - swap oob-green[unmeth] with red[meth]
@@ -168,7 +169,7 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
     green_in_band['unmeth'] = oobR_meth
 
     # next, add the green-in-band to oobG and red-in-band to oobR
-    oobG_IG = pd.concat([oobG, green_in_band]).sort_index() 
+    oobG_IG = pd.concat([oobG, green_in_band]).sort_index()
     oobR_IR = pd.concat([oobR, red_in_band]).sort_index()
 
     # channel swap requires a way to update idats with illumina_ids
@@ -178,17 +179,18 @@ def get_infer_channel_probes(manifest, green_idat, red_idat, debug=False):
         left_on='AddressA_ID',
         right_index=True,
         suffixes=(False, False),
-    )[['AddressA_ID','AddressB_ID']]
+    )[['AddressA_ID', 'AddressB_ID']]
     lookupIG = probe_details_IG.merge(
         idat_meth_unmeth,
         how='inner',
         left_on='AddressB_ID',
         right_index=True,
         suffixes=(False, False),
-    )[['AddressA_ID','AddressB_ID']]
+    )[['AddressA_ID', 'AddressB_ID']]
     #lookup = lookupIG.append(lookupIR).sort_index()
     lookup = pd.concat([lookupIG, lookupIR]).sort_index()
 
     if debug:
-        return {'green': oobG_IG, 'red': oobR_IR, 'oobG': oobG, 'oobR':oobR, 'IG': green_in_band, 'IR': red_in_band, 'lookup': lookup}
+        return {'green': oobG_IG, 'red': oobR_IR, 'oobG': oobG, 'oobR': oobR, 'IG': green_in_band, 'IR': red_in_band,
+                'lookup': lookup}
     return {'green': oobG_IG, 'red': oobR_IR, 'IR': red_in_band, 'IG': green_in_band, 'lookup': lookup}
