@@ -41,15 +41,18 @@ You should install all three components, as they work together. The parts includ
 
 ## Installation
 
-`methylprep` maintains configuration files for your Python package manager of choice: [pipenv](https://pipenv.readthedocs.io/en/latest/) or [pip](https://pip.pypa.io/en/stable/). Conda install is coming soon.
+As this is a fork of the official package, you can't install it through pip.
+If you have already installed methylprep with pip (or any other package manager), remove it first :
 
 ```shell
->>> pip install methylprep
+>>> pip uninstall methylprep
 ```
 
-or if you want to install all three packages at once:
+Then download the .zip [here](https://github.com/eliopato/methylprep/archive/refs/heads/EpicV2.zip) or clone the repository through git (on branch EpicV2)
+
+To launch the script from a terminal, `cd` to `methylprep` directory and launch it with :
 ```shell
->>> pip install methylsuite
+>>> python -m methylprep process -d <methylation folder path> --all
 ```
 
 ## Tutorials and Guides
