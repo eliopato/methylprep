@@ -48,7 +48,7 @@ If you have already installed methylprep with pip (or any other package manager)
 >>> pip uninstall methylprep
 ```
 
-Then download the .zip [here](https://github.com/eliopato/methylprep/archive/refs/heads/EpicV2.zip) or clone the repository through git (on branch EpicV2)
+Then download the .zip [here](https://github.com/eliopato/methylprep/archive/refs/heads/master.zip) or clone the repository through git
 
 To launch the script from a terminal, `cd` to `methylprep` directory and launch it with :
 ```shell
